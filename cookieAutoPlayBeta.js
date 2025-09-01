@@ -1,6 +1,13 @@
 // cookie bot: auto-play-through cookie clicker
 // see also https://github.com/prinzstani/CookieBot
 
+// seedrandom.js version 2.4.4
+// Author: David Bau
+// Date: 2019-05-29
+//
+// This library provides a seeded random number generator.
+// It is used by the FtHoF planner logic to predict spell outcomes, which are
+// determined by the game's seed and the number of spells cast.
 (function (a, b, c, d, e, f) {
         function k(a) {
                 var b, c = a.length, e = this, f = 0, g = e.i = e.j = 0, h = e.S = [];
@@ -126,6 +133,7 @@ AutoPlay.run = function() {
   if (Game.AscendTimer>0 || Game.ReincarnateTimer>0) return;
   if (AutoPlay.delay>0) { AutoPlay.delay--; return; }
   AutoPlay.now=Date.now();
+
   if (AutoPlay.nextAchievement==397) { AutoPlay.runJustRight(); return; }
   AutoPlay.cpsMult = Game.cookiesPs/Game.unbuffedCps;
   if (AutoPlay.nightMode() && !Game.ascensionMode) {
@@ -770,6 +778,13 @@ AutoPlay.harvestLump = function() {
 }
 
 AutoPlay.useLump = function() { // recursive call to handle many sugar lumps
+  if (AutoPlay.Config.GFDSkipSkip === 1 && Game.Objects['Wizard tower'].level === 0) {
+      if (Game.lumps > 0) {
+          AutoPlay.addActivity("Prioritizing Grimoire unlock for GFD strategy.");
+          Game.Objects['Wizard tower'].levelUp();
+          return;
+      }
+  }
   AutoPlay.canUseLumps = false;
   if (!Game.lumps) return;
   for (var i in AutoPlay.level1Order) {
@@ -869,94 +884,113 @@ AutoPlay.cookiesContainBuffs = function(include_ef, ...cookies) {
         });
 }
 
-AutoPlay.predictFthof = function(spells, season, chime, forcedGold) {
-        Math.seedrandom(Game.seed + '/' + spells);
-        let roll = Math.random();
-        let onScreenCookies = Game.shimmers.length;
-        let supremeIntellect = Game.dragonAura === 15;
-        let diminishIneptitude = Game.hasBuff('Diminish Ineptitude');
+AutoPlay.predictFthof = function(spells, season, chime, forceFail) {
+    Math.seedrandom(Game.seed + '/' + spells);
 
-        let backfireChance = 0.15 * onScreenCookies + 0.15 * (1 + 0.1 * (supremeIntellect?1:0)) * (1 - 0.9 * (diminishIneptitude?1:0));
+    if (chime && Game.ascensionMode != 1) Math.random();
+    if (season == 'valentines' || season == 'easter') Math.random();
 
-        if (forcedGold !== false && (forcedGold || roll < (1 - backfireChance))) {
-                if (chime == 1 && Game.ascensionMode != 1) Math.random();
-                if (season == 'valentines' || season == 'easter') {
-                        Math.random();
-                }
-                Math.random();
-                Math.random();
+    var backfireChance = 0.15;
+    var diminishIneptitude = Game.hasBuff('Diminish Ineptitude');
+    if (diminishIneptitude) backfireChance *= 0.1;
 
-                var choices = [];
-                choices.push('Frenzy', 'Lucky');
-                if (!Game.hasBuff('Dragonflight')) choices.push('Click Frenzy');
-                if (Math.random() < 0.1) choices.push('Cookie Storm', 'Cookie Storm', 'Blab');
-                if (Game.BuildingsOwned >= 10 && Math.random() < 0.25) choices.push('Building Special');
-                if (Math.random() < 0.15) choices = ['Cookie Storm Drop'];
-                if (Math.random() < 0.0001) choices.push('Free Sugar Lump');
-                let cookie = {};
-                cookie.wrath = false;
-                cookie.type = choose(choices);
-                return cookie;
-        } else {
-                if (chime == 1 && Game.ascensionMode != 1) Math.random();
-                if (season == 'valentines' || season == 'easter') {
-                        Math.random();
-                }
-                Math.random();
-                Math.random();
+    var cookie = {};
+    var fail = forceFail;
 
-                var choices = [];
-                choices.push('Clot', 'Ruin');
-                if (Math.random() < 0.1) choices.push('Cursed Finger', 'Elder Frenzy');
-                if (Math.random() < 0.003) choices.push('Free Sugar Lump');
-                if (Math.random() < 0.1) choices = ['Blab'];
-                let cookie = {};
-                cookie.wrath = true;
-                cookie.type = choose(choices);
-                return cookie;
+    if (typeof forceFail === 'undefined') {
+        fail = (Game.elderWrath == 0 && Math.random() < backfireChance);
+    }
+
+    if (fail) {
+        // Backfire (Wrath)
+        cookie.wrath = true;
+
+        Math.random(); // lump check
+
+        var choices = [];
+        choices.push('Clot', 'Ruin');
+        if (Math.random() < 0.1) choices.push('Cursed Finger', 'Elder Frenzy');
+        if (Math.random() < 0.003) choices.push('Free Sugar Lump');
+        if (Math.random() < 0.1) {
+            cookie.type = 'Blab';
+            return cookie;
         }
+        cookie.type = choose(choices);
+    } else {
+        // Success (Golden)
+        cookie.wrath = false;
+
+        Math.random(); // lump check
+
+        var choices = [];
+        choices.push('Frenzy', 'Lucky');
+        var dragonflight = Game.hasBuff('Dragonflight');
+        if (!dragonflight) choices.push('Click frenzy');
+        if (Math.random() < 0.1) choices.push('Cookie Storm', 'Cookie Storm', 'Blab');
+        if (Game.BuildingsOwned >= 10 && Math.random() < 0.25) choices.push('Building Special');
+        if (Math.random() < 0.15) {
+            cookie.type = 'Cookie Storm Drop';
+            return cookie;
+        }
+        if (Math.random() < 0.0001) choices.push('Free Sugar Lump');
+        cookie.type = choose(choices);
+    }
+    return cookie;
 }
 
 AutoPlay.predictGambler = function(spellsCast) {
-        Math.seedrandom(Game.seed + '/' + spellsCast);
+    // Determine which spell GFD will cast.
+    Math.seedrandom(Game.seed + '/' + spellsCast);
+    var M = Game.Objects['Wizard tower'].minigame;
+    var spells = [];
+    for (var i in M.spells) {
+        if (i != "gambler's fever dream")
+            spells.push(M.spells[i]);
+    }
+    var gfdSpellName = choose(spells).name;
 
-        let spells = [];
-        let M = Game.Objects['Wizard tower'].minigame;
-        for (var i in M.spells) {
-                if (i != "gambler's fever dream")
-                        spells.push(M.spells[i]);
-        }
+    // Determine if it will backfire.
+    Math.seedrandom(Game.seed + '/' + (spellsCast + 1));
+    var backfire = Math.random() < 0.5;
 
-        var gfdSpell = choose(spells);
-        var gfdBackfire = 0.5;
+    var gamblerSpell = {};
+    gamblerSpell.type = gfdSpellName;
+    gamblerSpell.backfire = backfire;
 
-        let gamblerSpell = {};
-        gamblerSpell.type = gfdSpell.name;
-        gamblerSpell.hasBs = false;
-        gamblerSpell.hasEf = false;
+    if (gfdSpellName == "Force the Hand of Fate") {
+        // A GFD-cast FtHoF uses the next spell in the sequence for its own prediction.
+        gamblerSpell.innerCookie1 = AutoPlay.predictFthof(spellsCast + 1, Game.season, false, backfire);
+        gamblerSpell.innerCookie2 = AutoPlay.predictFthof(spellsCast + 1, Game.season, true, backfire);
+        gamblerSpell.hasBs = gamblerSpell.innerCookie1.type == 'Building Special' || gamblerSpell.innerCookie2.type == 'Building Special';
+        gamblerSpell.hasEf = gamblerSpell.innerCookie1.type == 'Elder Frenzy' || gamblerSpell.innerCookie2.type == 'Elder Frenzy';
+    }
 
-        Math.seedrandom(Game.seed + '/' + (spellsCast + 1));
-        if (Math.random() < (1 - gfdBackfire)) {
-                gamblerSpell.backfire = false;
-                if (gfdSpell.name == "Force the Hand of Fate") {
-                        gamblerSpell.innerCookie1 = AutoPlay.predictFthof(spellsCast + 1, '', false, true);
-                        gamblerSpell.innerCookie2 = AutoPlay.predictFthof(spellsCast + 1, '', true, true);
-                        gamblerSpell.hasBs = gamblerSpell.innerCookie1.type == 'Building Special' || gamblerSpell.innerCookie2.type == 'Building Special';
-                }
-        } else {
-                gamblerSpell.backfire = true;
-                if (gfdSpell.name == "Force the Hand of Fate") {
-                        gamblerSpell.innerCookie1 = AutoPlay.predictFthof(spellsCast + 1, '', false, false);
-                        gamblerSpell.innerCookie2 = AutoPlay.predictFthof(spellsCast + 1, '', true, false);
-                        gamblerSpell.hasEf = gamblerSpell.innerCookie1.type == 'Elder Frenzy' || gamblerSpell.innerCookie2.type == 'Elder Frenzy';
-                }
-        }
-
-        return gamblerSpell;
+    return gamblerSpell;
 }
 
 AutoPlay.gfdTargetSpell = -1;
+AutoPlay.gfdOriginalAura = -1;
 
+AutoPlay.setTowers = function(amount) {
+    let diff = amount - Game.Objects['Wizard tower'].amount;
+    if (diff > 0) {
+        Game.Objects['Wizard tower'].buy(diff);
+    } else if (diff < 0) {
+        Game.Objects['Wizard tower'].sell(-diff);
+    }
+}
+
+AutoPlay.setDragonAura = function(auraId) {
+    if (Game.dragonAura !== auraId) {
+        Game.specialTab = "dragon";
+        Game.SetDragonAura(auraId, 0);
+        Game.ConfirmPrompt();
+        Game.ToggleSpecialMenu(0);
+    }
+}
+
+// TODO: This is a best-effort implementation based on the user's guide.
+// The logic for when to use this skip over others could be improved.
 AutoPlay.stretchTimeSkip = function() {
     let M = Game.Objects['Wizard tower'].minigame;
     let gfdCost = M.getSpellCost(M.spells["gambler's fever dream"]);
@@ -972,6 +1006,8 @@ AutoPlay.stretchTimeSkip = function() {
     return 'conditions_not_met';
 }
 
+// TODO: This is a best-effort implementation based on the user's guide.
+// The logic for when to use this skip over others could be improved.
 AutoPlay.resurrectAbominationSkip = function() {
     let M = Game.Objects['Wizard tower'].minigame;
     let gfdCost = M.getSpellCost(M.spells["gambler's fever dream"]);
@@ -987,6 +1023,8 @@ AutoPlay.resurrectAbominationSkip = function() {
     return 'conditions_not_met';
 }
 
+// TODO: This is a best-effort implementation based on the user's guide.
+// The logic for when to use this skip over others could be improved.
 AutoPlay.spontaneousEdificeSkip = function(predictedGfdSpell) {
     let M = Game.Objects['Wizard tower'].minigame;
     let gfdCost = M.getSpellCost(M.spells["gambler's fever dream"]);
@@ -1004,7 +1042,7 @@ AutoPlay.spontaneousEdificeSkip = function(predictedGfdSpell) {
     }
 
     if (!predictedGfdSpell.backfire && has400all) {
-        AutoPlay.addActivity("Performing SE skip.");
+        AutoPlay.addActivity("Performing SE skip (has >= 400 of all buildings).");
         M.castSpell(M.spells["gambler's fever dream"]);
         return true;
     }
@@ -1013,55 +1051,38 @@ AutoPlay.spontaneousEdificeSkip = function(predictedGfdSpell) {
 
 AutoPlay.normalGfdSkip = function() {
     let M = Game.Objects['Wizard tower'].minigame;
-    if (M.magic < 28) {
-        AutoPlay.addActivity("Waiting for magic to regenerate for GFD skip.");
-        return false; // Not enough magic
+    // Per the user's guide, the "normal" skip involves casting GFD and reloading.
+    let spell = M.spells["gambler's fever dream"];
+
+    if (M.magic < M.getSpellCost(spell)) {
+        AutoPlay.addActivity("Waiting for magic to regenerate for a normal GFD skip.");
+        return false; // Not enough magic, wait.
     }
 
-    let level = Game.Objects['Wizard tower'].level;
-    let towers = AutoPlay.wizardTowerLevels.find(l => l.level === level);
-    if (!towers) {
-        AutoPlay.addActivity("Wizard tower level not found in GFD skip table.");
-        return false; // Level not found in table
-    }
-
-    // Set dragon aura to Supreme Intellect (ID 15)
-    if (Game.dragonAura !== 15) {
-        AutoPlay.addActivity("Setting dragon aura to Supreme Intellect for GFD skip.");
-        Game.specialTab = "dragon";
-        Game.SetDragonAura(15, 0);
-        Game.ConfirmPrompt();
-        Game.ToggleSpecialMenu(0);
-    }
-
-    // Set tower amount to x
-    if (Game.Objects['Wizard tower'].amount !== towers.x) {
-        let diff = towers.x - Game.Objects['Wizard tower'].amount;
-        AutoPlay.addActivity("Adjusting wizard towers to " + towers.x + " for GFD skip.");
-        if (diff > 0) {
-            Game.Objects['Wizard tower'].buy(diff);
-        } else {
-            Game.Objects['Wizard tower'].sell(-diff);
-        }
-    }
-
-    // Save state before reloading
+    // Store the target spell number so we can resume after the reload
     localStorage.setItem('gfdTargetSpell', AutoPlay.gfdTargetSpell);
 
-    // Cast GFD
-    AutoPlay.addActivity("Casting GFD for skip.");
-    M.castSpell(M.spells["gambler's fever dream"]);
+    // Cast the spell and immediately reload to "scum" the magic cost
+    M.castSpell(spell);
+    window.location.reload();
 
-    // Save and reload
-    setTimeout(() => {
-        Game.Save();
-        window.location.reload();
-    }, 500);
-    return true;
+    return true; // This line is unlikely to be reached.
 }
+
 
 AutoPlay.GFDSkipSkipStrategy = function() {
     let M = Game.Objects['Wizard tower'].minigame;
+
+    // Prerequisite checks
+    if (!M || Game.Objects['Wizard tower'].level < 1) {
+        AutoPlay.addActivity("GFD Skip Skip strategy requires the Grimoire.");
+        return;
+    }
+    if (!Game.Upgrades["A crumbly egg"].unlocked) {
+        AutoPlay.addActivity("GFD Skip Skip strategy requires the dragon.");
+        return;
+    }
+
     let spellsCast = M.spellsCastTotal;
 
     if (AutoPlay.gfdTargetSpell === -1) {
@@ -1072,12 +1093,15 @@ AutoPlay.GFDSkipSkipStrategy = function() {
             if (predicted_fthof.type === 'Free Sugar Lump') {
                 AutoPlay.gfdTargetSpell = spellsCast + i;
                 AutoPlay.addActivity("Found a sugar lump at spell " + AutoPlay.gfdTargetSpell + ". Starting to skip.");
+                // Save initial state
+                localStorage.setItem('gfdOriginalAura', Game.dragonAura);
+                localStorage.setItem('gfdOriginalTowers', Game.Objects['Wizard tower'].amount);
+                localStorage.setItem('gfdStrategyActive', 'true');
                 break;
             }
         }
         if (AutoPlay.gfdTargetSpell === -1) {
-            AutoPlay.addActivity("No sugar lump found in the next 200 spells. Disabling GFD strategy.");
-            AutoPlay.Config.GFDSkipSkip = 0; // Turn off the toggle
+            AutoPlay.addActivity("No sugar lump found in the next 200 spells. Returning to normal operation.");
             return;
         }
     }
@@ -1088,6 +1112,21 @@ AutoPlay.GFDSkipSkipStrategy = function() {
         AutoPlay.addActivity("Target spell reached. Casting Force the Hand of Fate.");
         M.castSpell(M.spells["hand of fate"]);
         AutoPlay.gfdTargetSpell = -1; // Reset for the next run
+
+        // Restore initial state
+        let originalAura = localStorage.getItem('gfdOriginalAura');
+        if (originalAura !== null) {
+            AutoPlay.addActivity("Restoring original dragon aura.");
+            AutoPlay.setDragonAura(parseInt(originalAura));
+            localStorage.removeItem('gfdOriginalAura');
+        }
+        let originalTowers = localStorage.getItem('gfdOriginalTowers');
+        if (originalTowers !== null) {
+            AutoPlay.addActivity("Restoring original tower count.");
+            AutoPlay.setTowers(parseInt(originalTowers));
+            localStorage.removeItem('gfdOriginalTowers');
+        }
+        localStorage.removeItem('gfdStrategyActive');
         return;
     }
 
@@ -1098,17 +1137,19 @@ AutoPlay.GFDSkipSkipStrategy = function() {
     let nextGfdSpell = AutoPlay.predictGambler(spellsCast);
     AutoPlay.addActivity("Next GFD spell is: " + nextGfdSpell.type + " (backfire: " + nextGfdSpell.backfire + ")");
 
-    let skipResult = 'conditions_not_met'; // Default to fallback
-    switch (nextGfdSpell.type) {
-        case 'Stretch Time':
-            skipResult = AutoPlay.stretchTimeSkip();
-            break;
-        case 'Resurrect Abomination':
-            skipResult = AutoPlay.resurrectAbominationSkip();
-            break;
-        case 'Spontaneous Edifice':
-            skipResult = AutoPlay.spontaneousEdificeSkip(nextGfdSpell);
-            break;
+    let skipResult = 'conditions_not_met';
+    if (!nextGfdSpell.backfire) {
+        switch (nextGfdSpell.type) {
+            case 'Stretch Time':
+                skipResult = AutoPlay.stretchTimeSkip();
+                break;
+            case 'Resurrect Abomination':
+                skipResult = AutoPlay.resurrectAbominationSkip();
+                break;
+            case 'Spontaneous Edifice':
+                skipResult = AutoPlay.spontaneousEdificeSkip(nextGfdSpell);
+                break;
+        }
     }
 
     if (skipResult === 'conditions_not_met') {
@@ -2652,13 +2693,21 @@ AutoPlay.launch = function() {
     setTimeout(AutoPlay.launch, 1000);
 	return;
   }
-  if (localStorage.getItem('gfdTargetSpell')) {
-      AutoPlay.gfdTargetSpell = parseInt(localStorage.getItem('gfdTargetSpell'));
-      localStorage.removeItem('gfdTargetSpell'); // Clean up after restoring
-      AutoPlay.addActivity("Resumed GFD Skip Skip strategy. Target: " + AutoPlay.gfdTargetSpell);
-      // Also make sure the toggle is on, so the strategy continues
-      AutoPlay.Config.GFDSkipSkip = 1;
-  }
+    // Restore GFD strategy state after a reload
+    if (localStorage.getItem('gfdTargetSpell')) {
+        AutoPlay.gfdTargetSpell = parseInt(localStorage.getItem('gfdTargetSpell'));
+        localStorage.removeItem('gfdTargetSpell'); // Clean up after restoring
+        AutoPlay.addActivity("Resumed GFD Skip Skip strategy. Target: " + AutoPlay.gfdTargetSpell);
+
+        // Ensure the toggle is enabled so the strategy continues
+        AutoPlay.Config.GFDSkipSkip = 1;
+        AutoPlay.SaveConfig(AutoPlay.Config);
+        var button = l(AutoPlay.ConfigPrefix + 'GFDSkipSkip');
+        if (button) {
+            button.className = 'option';
+            button.innerHTML = AutoPlay.Disp.GetConfigDisplay('GFDSkipSkip');
+        }
+    }
   if (AutoPlay.launchCount < 5 && localStorageGet(Game.SaveTo) && !Game.AchievementsById[0].won) {
     AutoPlay.info("Game is not loaded yet, waiting ...");
     AutoPlay.launchCount++;
