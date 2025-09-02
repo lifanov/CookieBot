@@ -1075,11 +1075,11 @@ AutoPlay.GFDSkipSkipStrategy = function() {
 
     // Prerequisite checks
     if (!M || Game.Objects['Wizard tower'].level < 1) {
-        AutoPlay.addActivity("GFD Skip Skip strategy requires the Grimoire.");
+        AutoPlay.addActivity("GFD Strategy: Grimoire minigame not yet unlocked.");
         return;
     }
     if (!Game.Upgrades["A crumbly egg"].unlocked) {
-        AutoPlay.addActivity("GFD Skip Skip strategy requires the dragon.");
+        AutoPlay.addActivity("GFD Strategy: Dragon not yet unlocked.");
         return;
     }
 
@@ -1087,55 +1087,51 @@ AutoPlay.GFDSkipSkipStrategy = function() {
 
     if (AutoPlay.gfdTargetSpell === -1) {
         // Find the next sugar lump
-        AutoPlay.addActivity("Searching for the next sugar lump...");
+        AutoPlay.addActivity("GFD: Searching for next sugar lump...");
         for (let i = 1; i < 200; i++) { // Look ahead, starting from the next spell
-            let predicted_fthof = AutoPlay.predictFthof(spellsCast + i, Game.season, Game.chimeType, false);
+            let predicted_fthof = AutoPlay.predictFthof(spellsCast + i, Game.season, Game.chimeType);
             if (predicted_fthof.type === 'Free Sugar Lump') {
                 AutoPlay.gfdTargetSpell = spellsCast + i;
-                AutoPlay.addActivity("Found a sugar lump at spell " + AutoPlay.gfdTargetSpell + ". Starting to skip.");
-                // Save initial state
+                // Save initial state that might be changed by skips
                 localStorage.setItem('gfdOriginalAura', Game.dragonAura);
                 localStorage.setItem('gfdOriginalTowers', Game.Objects['Wizard tower'].amount);
-                localStorage.setItem('gfdStrategyActive', 'true');
                 break;
             }
         }
         if (AutoPlay.gfdTargetSpell === -1) {
-            AutoPlay.addActivity("No sugar lump found in the next 200 spells. Returning to normal operation.");
+            AutoPlay.addActivity("GFD: No sugar lump found in the next 200 spells.");
             return;
         }
     }
 
-    // We have a target. Let's see if we're there yet.
+    // We have a target. Let's see if we're there.
     if (spellsCast >= AutoPlay.gfdTargetSpell) {
         // We are at or past the target spell. Let's cast it.
-        AutoPlay.addActivity("Target spell reached. Casting Force the Hand of Fate.");
+        AutoPlay.addActivity("GFD: Target reached! Casting Force the Hand of Fate.");
         M.castSpell(M.spells["hand of fate"]);
         AutoPlay.gfdTargetSpell = -1; // Reset for the next run
 
         // Restore initial state
         let originalAura = localStorage.getItem('gfdOriginalAura');
         if (originalAura !== null) {
-            AutoPlay.addActivity("Restoring original dragon aura.");
             AutoPlay.setDragonAura(parseInt(originalAura));
             localStorage.removeItem('gfdOriginalAura');
         }
         let originalTowers = localStorage.getItem('gfdOriginalTowers');
         if (originalTowers !== null) {
-            AutoPlay.addActivity("Restoring original tower count.");
             AutoPlay.setTowers(parseInt(originalTowers));
             localStorage.removeItem('gfdOriginalTowers');
         }
-        localStorage.removeItem('gfdStrategyActive');
         return;
     }
 
     // We need to skip.
-    AutoPlay.addActivity("Current spells: " + spellsCast + ", Target: " + AutoPlay.gfdTargetSpell + ". Skipping...");
+    let skipsLeft = AutoPlay.gfdTargetSpell - spellsCast;
+    AutoPlay.addActivity("GFD: " + skipsLeft + " skips remaining until sugar lump.");
 
     // Predict the next GFD spell to decide on the skip strategy
     let nextGfdSpell = AutoPlay.predictGambler(spellsCast);
-    AutoPlay.addActivity("Next GFD spell is: " + nextGfdSpell.type + " (backfire: " + nextGfdSpell.backfire + ")");
+    AutoPlay.addActivity("GFD: Next potential skip is via " + nextGfdSpell.type + ".");
 
     let skipResult = 'conditions_not_met';
     if (!nextGfdSpell.backfire) {
@@ -1153,7 +1149,7 @@ AutoPlay.GFDSkipSkipStrategy = function() {
     }
 
     if (skipResult === 'conditions_not_met') {
-        AutoPlay.addActivity("Advanced skip conditions not met, falling back to normal skip.");
+        AutoPlay.addActivity("GFD: Advanced skip conditions not met. Using normal skip.");
         skipResult = AutoPlay.normalGfdSkip();
     }
 
