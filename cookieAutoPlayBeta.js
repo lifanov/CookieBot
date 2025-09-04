@@ -1077,7 +1077,11 @@ AutoPlay.normalGfdSkip = function() {
     }
 
     // Store the target spell number so we can resume after the reload
-    localStorage.setItem('gfdTargetSpell', AutoPlay.gfdTargetSpell);
+    try {
+        localStorage.setItem('gfdTargetSpell', AutoPlay.gfdTargetSpell);
+    } catch (e) {
+        AutoPlay.addActivity("GFD: Error saving state to localStorage. Strategy may not resume correctly after reload.");
+    }
 
     // Cast the spell and immediately reload to "scum" the magic cost
     M.castSpell(spell);
@@ -1109,9 +1113,11 @@ AutoPlay.GFDSkipSkipStrategy = function() {
             let predicted_fthof = AutoPlay.predictFthof(spellsCast + i, Game.season, Game.chimeType);
             if (predicted_fthof.type === 'Free Sugar Lump') {
                 AutoPlay.gfdTargetSpell = spellsCast + i;
-                // Save initial state that might be changed by skips
-                localStorage.setItem('gfdOriginalAura', Game.dragonAura);
-                localStorage.setItem('gfdOriginalTowers', Game.Objects['Wizard tower'].amount);
+                try {
+                    // Save initial state that might be changed by skips
+                    localStorage.setItem('gfdOriginalAura', Game.dragonAura);
+                    localStorage.setItem('gfdOriginalTowers', Game.Objects['Wizard tower'].amount);
+                } catch (e) { /* Fail silently, but allow script to continue */ }
                 break;
             }
         }
@@ -1127,18 +1133,19 @@ AutoPlay.GFDSkipSkipStrategy = function() {
         AutoPlay.addActivity("GFD: Target reached! Casting Force the Hand of Fate.");
         M.castSpell(M.spells["hand of fate"]);
         AutoPlay.gfdTargetSpell = -1; // Reset for the next run
-
-        // Restore initial state
-        let originalAura = localStorage.getItem('gfdOriginalAura');
-        if (originalAura !== null) {
-            AutoPlay.setDragonAura(parseInt(originalAura));
-            localStorage.removeItem('gfdOriginalAura');
-        }
-        let originalTowers = localStorage.getItem('gfdOriginalTowers');
-        if (originalTowers !== null) {
-            AutoPlay.setTowers(parseInt(originalTowers));
-            localStorage.removeItem('gfdOriginalTowers');
-        }
+        try {
+            // Restore initial state
+            let originalAura = localStorage.getItem('gfdOriginalAura');
+            if (originalAura !== null) {
+                AutoPlay.setDragonAura(parseInt(originalAura));
+                localStorage.removeItem('gfdOriginalAura');
+            }
+            let originalTowers = localStorage.getItem('gfdOriginalTowers');
+            if (originalTowers !== null) {
+                AutoPlay.setTowers(parseInt(originalTowers));
+                localStorage.removeItem('gfdOriginalTowers');
+            }
+        } catch (e) { /* Fail silently */ }
         return;
     }
 
@@ -1146,11 +1153,17 @@ AutoPlay.GFDSkipSkipStrategy = function() {
     let skipsLeft = AutoPlay.gfdTargetSpell - spellsCast;
     AutoPlay.addActivity("GFD: " + skipsLeft + " skips remaining until sugar lump.");
 
-    // Predict the next GFD spell to decide on the skip strategy
-    let nextGfdSpell = AutoPlay.predictGambler(spellsCast);
-    AutoPlay.addActivity("GFD: Next potential skip is via " + nextGfdSpell.type + ".");
+    let gfdCost = M.getSpellCost(M.spells["gambler's fever dream"]);
+    if (M.magic < gfdCost) {
+        AutoPlay.addActivity("GFD: Waiting for magic (" + M.magic.toFixed(0) + "/" + gfdCost.toFixed(0) + ").");
+        AutoPlay.setDeadline(AutoPlay.now + 5000);
+        return;
+    }
 
+    // If we have mana, attempt the skip.
+    let nextGfdSpell = AutoPlay.predictGambler(spellsCast);
     let skipResult = 'conditions_not_met';
+
     if (!nextGfdSpell.backfire) {
         switch (nextGfdSpell.type) {
             case 'Stretch Time':
@@ -1166,12 +1179,12 @@ AutoPlay.GFDSkipSkipStrategy = function() {
     }
 
     if (skipResult === 'conditions_not_met') {
-        AutoPlay.addActivity("GFD: Advanced skip conditions not met. Using normal skip.");
+        AutoPlay.addActivity("GFD: Performing normal skip.");
         skipResult = AutoPlay.normalGfdSkip();
     }
 
     if (skipResult === false) {
-        // Not enough magic for any skip. Wait.
+        // This can now be triggered by either an advanced skip OR the normal skip.
         AutoPlay.setDeadline(AutoPlay.now + 5000);
     }
 }
