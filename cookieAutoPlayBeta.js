@@ -53,11 +53,27 @@
                         for (; a >= i;) a /= 2, b /= 2, c >>>= 1;
                         return (a + c) / b
                 }, p
-        }, m(c.random(), b)
+        };
+
+        // Add a local PRNG function that doesn't affect Math.random.
+        c.seedrandom.local = function(a, f) {
+                var j = [], p = m(l(f ? [a, o(b)] : 0 in arguments ? a : n(), 3), j), q = new k(j);
+                var randomFunc = function () {
+                        for (var a = q.g(e), b = g, c = 0; h > a;) a = (a + c) * d, b *= d, c = q.g(1);
+                        for (; a >= i;) a /= 2, b /= 2, c >>>= 1;
+                        return (a + c) / b
+                };
+                return randomFunc;
+        };
+
+        m(c.random(), b)
 })(this, [], Math, 256, 6, 52);
 
-function choose(arr) {
-        return arr[Math.floor(Math.random() * arr.length)];
+function choose(arr, prng) {
+        if (typeof prng === 'undefined') {
+                prng = Math.random;
+        }
+        return arr[Math.floor(prng() * arr.length)];
 }
 
 var AutoPlay;
@@ -885,10 +901,10 @@ AutoPlay.cookiesContainBuffs = function(include_ef, ...cookies) {
 }
 
 AutoPlay.predictFthof = function(spells, season, chime, forceFail) {
-    Math.seedrandom(Game.seed + '/' + spells);
+    var prng = Math.seedrandom.local(Game.seed + '/' + spells);
 
-    if (chime && Game.ascensionMode != 1) Math.random();
-    if (season == 'valentines' || season == 'easter') Math.random();
+    if (chime && Game.ascensionMode != 1) prng();
+    if (season == 'valentines' || season == 'easter') prng();
 
     var backfireChance = 0.15;
     var diminishIneptitude = Game.hasBuff('Diminish Ineptitude');
@@ -898,60 +914,61 @@ AutoPlay.predictFthof = function(spells, season, chime, forceFail) {
     var fail = forceFail;
 
     if (typeof forceFail === 'undefined') {
-        fail = (Game.elderWrath == 0 && Math.random() < backfireChance);
+        fail = (Game.elderWrath == 0 && prng() < backfireChance);
     }
 
     if (fail) {
         // Backfire (Wrath)
         cookie.wrath = true;
 
-        Math.random(); // lump check
+        prng(); // lump check
 
         var choices = [];
         choices.push('Clot', 'Ruin');
-        if (Math.random() < 0.1) choices.push('Cursed Finger', 'Elder Frenzy');
-        if (Math.random() < 0.003) choices.push('Free Sugar Lump');
-        if (Math.random() < 0.1) {
+        if (prng() < 0.1) choices.push('Cursed Finger', 'Elder Frenzy');
+        if (prng() < 0.003) choices.push('Free Sugar Lump');
+        if (prng() < 0.1) {
             cookie.type = 'Blab';
             return cookie;
         }
-        cookie.type = choose(choices);
+        cookie.type = choose(choices, prng);
     } else {
         // Success (Golden)
         cookie.wrath = false;
 
-        Math.random(); // lump check
+        prng(); // lump check
 
         var choices = [];
         choices.push('Frenzy', 'Lucky');
         var dragonflight = Game.hasBuff('Dragonflight');
         if (!dragonflight) choices.push('Click frenzy');
-        if (Math.random() < 0.1) choices.push('Cookie Storm', 'Cookie Storm', 'Blab');
-        if (Game.BuildingsOwned >= 10 && Math.random() < 0.25) choices.push('Building Special');
-        if (Math.random() < 0.15) {
+        if (prng() < 0.1) choices.push('Cookie Storm', 'Cookie Storm', 'Blab');
+        if (Game.BuildingsOwned >= 10 && prng() < 0.25) choices.push('Building Special');
+        if (prng() < 0.15) {
             cookie.type = 'Cookie Storm Drop';
             return cookie;
         }
-        if (Math.random() < 0.0001) choices.push('Free Sugar Lump');
-        cookie.type = choose(choices);
+        if (prng() < 0.0001) choices.push('Free Sugar Lump');
+        cookie.type = choose(choices, prng);
     }
     return cookie;
 }
 
 AutoPlay.predictGambler = function(spellsCast) {
-    // Determine which spell GFD will cast.
-    Math.seedrandom(Game.seed + '/' + spellsCast);
     var M = Game.Objects['Wizard tower'].minigame;
     var spells = [];
     for (var i in M.spells) {
         if (i != "gambler's fever dream")
             spells.push(M.spells[i]);
     }
-    var gfdSpellName = choose(spells).name;
+
+    // Determine which spell GFD will cast.
+    var gfdPrng = Math.seedrandom.local(Game.seed + '/' + spellsCast);
+    var gfdSpellName = choose(spells, gfdPrng).name;
 
     // Determine if it will backfire.
-    Math.seedrandom(Game.seed + '/' + (spellsCast + 1));
-    var backfire = Math.random() < 0.5;
+    var backfirePrng = Math.seedrandom.local(Game.seed + '/' + (spellsCast + 1));
+    var backfire = backfirePrng() < 0.5;
 
     var gamblerSpell = {};
     gamblerSpell.type = gfdSpellName;
