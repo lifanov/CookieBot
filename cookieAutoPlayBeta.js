@@ -1099,10 +1099,6 @@ AutoPlay.GFDSkipSkipStrategy = function() {
         AutoPlay.addActivity("GFD Strategy: Grimoire minigame not yet unlocked.");
         return;
     }
-    if (!Game.Upgrades["A crumbly egg"].unlocked) {
-        AutoPlay.addActivity("GFD Strategy: Dragon not yet unlocked.");
-        return;
-    }
 
     let spellsCast = M.spellsCastTotal;
 
@@ -1115,7 +1111,7 @@ AutoPlay.GFDSkipSkipStrategy = function() {
                 AutoPlay.gfdTargetSpell = spellsCast + i;
                 try {
                     // Save initial state that might be changed by skips
-                    localStorage.setItem('gfdOriginalAura', Game.dragonAura);
+                    if (Game.Upgrades["A crumbly egg"].unlocked) localStorage.setItem('gfdOriginalAura', Game.dragonAura);
                     localStorage.setItem('gfdOriginalTowers', Game.Objects['Wizard tower'].amount);
                 } catch (e) { /* Fail silently, but allow script to continue */ }
                 break;
@@ -1135,10 +1131,12 @@ AutoPlay.GFDSkipSkipStrategy = function() {
         AutoPlay.gfdTargetSpell = -1; // Reset for the next run
         try {
             // Restore initial state
-            let originalAura = localStorage.getItem('gfdOriginalAura');
-            if (originalAura !== null) {
-                AutoPlay.setDragonAura(parseInt(originalAura));
-                localStorage.removeItem('gfdOriginalAura');
+            if (Game.Upgrades["A crumbly egg"].unlocked) {
+                let originalAura = localStorage.getItem('gfdOriginalAura');
+                if (originalAura !== null) {
+                    AutoPlay.setDragonAura(parseInt(originalAura));
+                    localStorage.removeItem('gfdOriginalAura');
+                }
             }
             let originalTowers = localStorage.getItem('gfdOriginalTowers');
             if (originalTowers !== null) {
